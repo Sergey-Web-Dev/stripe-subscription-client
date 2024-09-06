@@ -1,0 +1,10 @@
+[lcl-host]
+realm-apid = 'localhost'
+
+[org]
+apid = 'siarheilabodzin'
+
+[service]
+apid = 'client'
+category = 'javascript'
+cert-style = 'acme'
