@@ -44,7 +44,7 @@ const CheckoutForm = () => {
 
     try {
       const response = await fetch(
-        "http://localhost:3000/stripe/create-subscription",
+        "https://stripe-subscription-6cod.onrender.com/stripe/create-subscription",
         {
           method: "POST",
           headers: {
