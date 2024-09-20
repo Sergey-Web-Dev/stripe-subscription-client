@@ -1,93 +1,92 @@
 "use client";
-import React, { useState, useEffect } from "react";
-import {
-  useStripe,
-  useElements,
-  PaymentElement,
-} from "@stripe/react-stripe-js";
-import convertToSubcurrency from "@/lib/convertToSubcurrency";
+import React, { useState } from "react";
+import { CardElement, useStripe, useElements } from "@stripe/react-stripe-js";
 
-const CheckoutForm = ({ amount }: { amount: number }) => {
+const CheckoutForm = () => {
   const stripe = useStripe();
   const elements = useElements();
-  const [errorMessage, setErrorMessage] = useState<string>();
-  const [clientSecret, setClientSecret] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const rightAmount = convertToSubcurrency(amount);
-    fetch(
-      "https://stripe-subscription-back.onrender.com/stripe/create-PaymentIntent",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ amount: rightAmount }),
-      }
-    )
-      .then((res) => res.json())
-      .then((data) => setClientSecret(data.clientSecret));
-  }, [amount]);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setLoading(true);
 
     if (!stripe || !elements) {
-      return;
-    }
-
-    const { error: submitError } = await elements.submit();
-
-    if (submitError) {
-      setErrorMessage(submitError.message);
+      setErrorMessage("Stripe or elements is not available.");
       setLoading(false);
       return;
     }
 
-    const { error } = await stripe.confirmPayment({
-      elements,
-      clientSecret,
-      confirmParams: {
-        return_url: `https://client-l5y2r2bvn-sergey-web-devs-projects.vercel.app/payment-success?amount=${amount}`,
+    const cardElement = elements.getElement(CardElement);
+
+    if (!cardElement) {
+      setErrorMessage("Card details are not available.");
+      setLoading(false);
+      return;
+    }
+
+    const { error, paymentMethod } = await stripe.createPaymentMethod({
+      type: "card",
+      card: cardElement,
+      billing_details: {
+        email,
       },
     });
 
     if (error) {
-      setErrorMessage(error.message);
-    } else {
+      setErrorMessage(error.message || "Failed to create payment method.");
+      setLoading(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        "http://localhost:3000/stripe/create-subscription",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email,
+            paymentMethodId: paymentMethod.id,
+            priceId: "price_1PuX59LlYcDGQ705FWFAqmX9",
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (data.error) {
+        setErrorMessage(data.error);
+      } else {
+        setSuccessMessage("Subscription successfully created!");
+      }
+    } catch (err) {
+      setErrorMessage("Failed to create subscription.");
     }
 
     setLoading(false);
   };
 
-  if (!clientSecret || !stripe || !elements) {
-    return (
-      <div className="flex items-center justify-center">
-        <div
-          className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-solid border-current border-e-transparent align-[-0.125em] text-surface motion-reduce:animate-[spin_1.5s_linear_infinite] dark:text-white"
-          role="status"
-        >
-          <span className="!absolute !-m-px !h-px !w-px !overflow-hidden !whitespace-nowrap !border-0 !p-0 ![clip:rect(0,0,0,0)]">
-            Loading...
-          </span>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <form onSubmit={handleSubmit} className="bg-white p-2 rounded-md">
-      {clientSecret && <PaymentElement />}
-
-      {errorMessage && <div>{errorMessage}</div>}
-
-      <button
-        disabled={!stripe || loading}
-        className="text-white w-full p-5 bg-black mt-2 rounded-md font-bold disabled:opacity-50 disabled:animate-pulse"
-      >
-        {!loading ? `Pay $${amount}` : "Processing..."}
+    <form onSubmit={handleSubmit}>
+      <label htmlFor="email">Email:</label>
+      <input
+        type="email"
+        id="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        required
+        placeholder="Enter your email"
+      />
+      <CardElement />
+      {errorMessage && <div className="error">{errorMessage}</div>}
+      {successMessage && <div className="success">{successMessage}</div>}
+      <button type="submit" disabled={loading || !stripe}>
+        {loading ? "Processing..." : "Submit Payment"}
       </button>
     </form>
   );
